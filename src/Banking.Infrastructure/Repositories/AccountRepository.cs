@@ -1,7 +1,9 @@
 using System.Data;
+using System.Data.Common;
 using Banking.Application.Abstractions;
 using Banking.Domain.Entities;
 using Banking.Domain.Enums;
+using Banking.Domain.Exceptions;
 using Microsoft.Data.SqlClient;
 
 namespace Banking.Infrastructure.Repositories;
@@ -78,7 +80,52 @@ public sealed class AccountRepository : IAccountRepository
         await command.ExecuteNonQueryAsync(cancellationToken);
         return account.Id;
     }
+    public async Task UpdateBalanceAsync(
+        Guid accountId,
+        decimal newBalance,
+        byte[] rowVersion,
+        DbTransaction? dbTransaction = null,
+        CancellationToken cancellationToken = default)
+    {
+        var ownsConnection = dbTransaction is null;
+        var connection = ownsConnection
+            ? await _connectionFactory.CreateOpenConnectionAsync(cancellationToken)
+            : dbTransaction!.Connection;
 
+        try
+        {
+            await using var command = ((SqlConnection)connection).CreateCommand();
+
+            if (dbTransaction is not null)
+            {
+                command.Transaction = (SqlTransaction)dbTransaction;
+            }
+
+            command.CommandText = """
+            UPDATE dbo.Account
+            SET Balance = @NewBalance
+            WHERE Id = @AccountId
+              AND RowVersion = @RowVersion
+            """;
+
+            command.Parameters.Add(new SqlParameter("@AccountId", SqlDbType.UniqueIdentifier) { Value = accountId });
+            command.Parameters.Add(new SqlParameter("@NewBalance", SqlDbType.Decimal) { Value = newBalance, Precision = 18, Scale = 2 });
+            command.Parameters.Add(new SqlParameter("@RowVersion", SqlDbType.Timestamp) { Value = rowVersion });
+
+            var rowsAffected = await command.ExecuteNonQueryAsync(cancellationToken);
+            if (rowsAffected == 0)
+            {
+                throw new ConcurrencyException("Account", accountId);
+            }
+        }
+        finally
+        {
+            if (ownsConnection && connection is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync();
+            }
+        }
+    }
     private static Account MapAccount(SqlDataReader reader) => new()
     {
         Id = reader.GetGuid(reader.GetOrdinal("Id")),

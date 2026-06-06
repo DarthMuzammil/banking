@@ -17,18 +17,23 @@ public sealed class JwtTokenService : IJwtTokenService
         _settings = settings.Value;
     }
 
-    public string GenerateToken(Customer customer)
+    public string GenerateToken(Customer customer) =>
+        GenerateToken(customer, TimeSpan.FromMinutes(_settings.ExpiryMinutes));
+
+    public string GenerateToken(Customer customer, TimeSpan lifetime)
     {
         var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.Key));
         var credentials = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);
 
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim(JwtRegisteredClaimNames.Sub, customer.Id.ToString()),
-            new Claim(JwtRegisteredClaimNames.Email, customer.Email),
-            new Claim(JwtRegisteredClaimNames.GivenName, customer.FirstName),
-            new Claim(JwtRegisteredClaimNames.FamilyName, customer.LastName),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            new(JwtRegisteredClaimNames.Sub, customer.Id.ToString()),
+            new(ClaimTypes.NameIdentifier, customer.Id.ToString()),
+            new(JwtRegisteredClaimNames.Email, customer.Email),
+            new(JwtRegisteredClaimNames.GivenName, customer.FirstName),
+            new(JwtRegisteredClaimNames.FamilyName, customer.LastName),
+            new(ClaimTypes.Role, customer.Role.ToString()),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
         var token = new JwtSecurityToken(
@@ -36,7 +41,7 @@ public sealed class JwtTokenService : IJwtTokenService
             audience: _settings.Audience,
             claims: claims,
             notBefore: DateTime.UtcNow,
-            expires: DateTime.UtcNow.AddMinutes(_settings.ExpiryMinutes),
+            expires: DateTime.UtcNow.Add(lifetime),
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);

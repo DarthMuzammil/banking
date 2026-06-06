@@ -11,5 +11,6 @@ public class Transaction
     public decimal BalanceAfter { get; set; }
     public string? Description { get; set; }
     public Guid? ReferenceId { get; set; }
+    public TransactionCategory? Category { get; set; }
     public DateTime CreatedAt { get; set; }
 }

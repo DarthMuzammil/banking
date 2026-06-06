@@ -8,4 +8,15 @@ public interface ICustomerRepository
     Task<Customer?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<string?> GetPasswordHashAsync(Guid customerId, CancellationToken cancellationToken = default);
     Task<Guid> CreateAsync(Customer customer, string passwordHash, CancellationToken cancellationToken = default);
+    Task UpdateProfileAsync(
+        Guid customerId,
+        string firstName,
+        string lastName,
+        string email,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<Customer>> SearchAsync(
+        string search,
+        int take,
+        CancellationToken cancellationToken = default);
 }

@@ -9,15 +9,18 @@ public sealed class LoginQueryHandler
     private readonly ICustomerRepository _customerRepository;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtTokenService _jwtTokenService;
+    private readonly IRefreshTokenService _refreshTokenService;
 
     public LoginQueryHandler(
         ICustomerRepository customerRepository,
         IPasswordHasher passwordHasher,
-        IJwtTokenService jwtTokenService)
+        IJwtTokenService jwtTokenService,
+        IRefreshTokenService refreshTokenService)
     {
         _customerRepository = customerRepository;
         _passwordHasher = passwordHasher;
         _jwtTokenService = jwtTokenService;
+        _refreshTokenService = refreshTokenService;
     }
 
     public async Task<Result<AuthResponseDto>> HandleAsync(
@@ -43,12 +46,14 @@ public sealed class LoginQueryHandler
         }
 
         var token = _jwtTokenService.GenerateToken(customer);
+        var refreshToken = await _refreshTokenService.IssueAsync(customer, cancellationToken);
         var summary = new CustomerSummaryDto(
             customer.Id,
             customer.Email,
             customer.FirstName,
-            customer.LastName);
+            customer.LastName,
+            customer.Role.ToString());
 
-        return Result<AuthResponseDto>.Success(new AuthResponseDto(token, summary));
+        return Result<AuthResponseDto>.Success(new AuthResponseDto(token, refreshToken, summary));
     }
 }

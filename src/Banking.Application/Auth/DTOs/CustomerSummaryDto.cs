@@ -4,4 +4,5 @@ public sealed record CustomerSummaryDto(
     Guid Id,
     string Email,
     string FirstName,
-    string LastName);
+    string LastName,
+    string Role);
