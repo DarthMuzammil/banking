@@ -1,0 +1,28 @@
+@Banking.Api_HostAddress = http://localhost:5206
+
+GET {{Banking.Api_HostAddress}}/api/health
+Accept: application/json
+
+###
+
+POST {{Banking.Api_HostAddress}}/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "alice@example.com",
+  "password": "Password123!",
+  "firstName": "Alice",
+  "lastName": "Smith"
+}
+
+###
+
+POST {{Banking.Api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "demo@bank.local",
+  "password": "Demo123!"
+}
+
+###
