@@ -10,13 +10,16 @@ public class AuthController : ControllerBase
 {
     private readonly RegisterCustomerCommandHandler _registerHandler;
     private readonly LoginQueryHandler _loginHandler;
+    private readonly RefreshTokenCommandHandler _refreshHandler;
 
     public AuthController(
         RegisterCustomerCommandHandler registerHandler,
-        LoginQueryHandler loginHandler)
+        LoginQueryHandler loginHandler,
+        RefreshTokenCommandHandler refreshHandler)
     {
         _registerHandler = registerHandler;
         _loginHandler = loginHandler;
+        _refreshHandler = refreshHandler;
     }
 
     [HttpPost("register")]
@@ -58,6 +61,23 @@ public class AuthController : ControllerBase
 
         return Ok(result.Value);
     }
+
+    [HttpPost("refresh")]
+    public async Task<IActionResult> Refresh(
+        [FromBody] RefreshTokenRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _refreshHandler.HandleAsync(
+            new RefreshTokenCommand(request.RefreshToken),
+            cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            return Unauthorized(new { error = result.Error, code = result.ErrorCode });
+        }
+
+        return Ok(result.Value);
+    }
 }
 
 public sealed record RegisterCustomerRequest(
@@ -67,3 +87,4 @@ public sealed record RegisterCustomerRequest(
     string LastName);
 
 public sealed record LoginRequest(string Email, string Password);
+public sealed record RefreshTokenRequest(string RefreshToken);

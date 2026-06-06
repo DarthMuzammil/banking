@@ -1,28 +1,226 @@
 @Banking.Api_HostAddress = http://localhost:5206
 
+@checkingAccountId = 22222222-2222-2222-2222-222222222222
+
+@savingsAccountId = 33333333-3333-3333-3333-333333333333
+
+
+
 GET {{Banking.Api_HostAddress}}/api/health
+
 Accept: application/json
 
-###
 
-POST {{Banking.Api_HostAddress}}/api/auth/register
-Content-Type: application/json
-
-{
-  "email": "alice@example.com",
-  "password": "Password123!",
-  "firstName": "Alice",
-  "lastName": "Smith"
-}
 
 ###
+
+
+
+# @name login
 
 POST {{Banking.Api_HostAddress}}/api/auth/login
+
+Content-Type: application/json
+
+
+
+{
+
+  "email": "demo@bank.local",
+
+  "password": "Demo123!"
+
+}
+
+
+
+###
+
+
+
+@token = {{login.response.body.token}}
+
+
+
+GET {{Banking.Api_HostAddress}}/api/accounts
+
+Authorization: Bearer {{token}}
+
+
+
+###
+
+
+
+POST {{Banking.Api_HostAddress}}/api/accounts
+
+Authorization: Bearer {{token}}
+
+Content-Type: application/json
+
+
+
+{
+
+  "accountType": "Checking"
+
+}
+
+
+
+###
+
+
+
+GET {{Banking.Api_HostAddress}}/api/accounts/{{checkingAccountId}}
+
+Authorization: Bearer {{token}}
+
+
+
+###
+
+
+
+POST {{Banking.Api_HostAddress}}/api/accounts/{{checkingAccountId}}/deposits
+
+Authorization: Bearer {{token}}
+
+Content-Type: application/json
+
+
+
+{
+
+  "amount": 250.00,
+
+  "description": "Paycheck"
+
+}
+
+
+
+###
+
+
+
+POST {{Banking.Api_HostAddress}}/api/accounts/{{checkingAccountId}}/withdrawals
+
+Authorization: Bearer {{token}}
+
+Content-Type: application/json
+
+
+
+{
+
+  "amount": 50.00,
+
+  "description": "ATM"
+
+}
+
+
+
+###
+
+
+
+POST {{Banking.Api_HostAddress}}/api/transfers
+
+Authorization: Bearer {{token}}
+
+Content-Type: application/json
+
+
+
+{
+
+  "fromAccountId": "{{checkingAccountId}}",
+
+  "toAccountId": "{{savingsAccountId}}",
+
+  "amount": 100.00,
+
+  "description": "Savings top-up"
+
+}
+
+
+
+###
+
+
+
+GET {{Banking.Api_HostAddress}}/api/accounts/{{checkingAccountId}}/transactions?skip=0&take=10
+
+Authorization: Bearer {{token}}
+
+
+
+###
+
+
+
+GET {{Banking.Api_HostAddress}}/api/transactions?skip=0&take=20
+
+Authorization: Bearer {{token}}
+
+
+
+###
+
+GET {{Banking.Api_HostAddress}}/api/insights/spending
+
+Authorization: Bearer {{token}}
+
+
+
+###
+
+GET {{Banking.Api_HostAddress}}/api/credit-cards
+
+Authorization: Bearer {{token}}
+
+
+
+###
+
+GET {{Banking.Api_HostAddress}}/api/investments/portfolio
+
+Authorization: Bearer {{token}}
+
+
+
+###
+
+GET {{Banking.Api_HostAddress}}/api/payments/bills
+
+Authorization: Bearer {{token}}
+
+
+
+###
+
+POST {{Banking.Api_HostAddress}}/api/payments/bills/77777777-7777-7777-7777-777777777771/pay
+
+Authorization: Bearer {{token}}
+
 Content-Type: application/json
 
 {
-  "email": "demo@bank.local",
-  "password": "Demo123!"
+  "accountId": "{{checkingAccountId}}"
 }
 
+
+
 ###
+
+GET {{Banking.Api_HostAddress}}/api/settings
+
+Authorization: Bearer {{token}}
+
+
+
+###
+
