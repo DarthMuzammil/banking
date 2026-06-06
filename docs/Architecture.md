@@ -1,7 +1,9 @@
 # Architecture — Banking Application
 
 Minimal high-level and low-level design for the MVP → production evolution.  
-**Stack:** C# (.NET 8 Web API) · React (Vite + TypeScript) · SQL Server · ADO.NET
+**Stack:** C# (.NET 9 Web API) · Next.js 16 (App Router) + TypeScript + Tailwind · SQL Server · ADO.NET
+
+**Sprint docs:** [Sprint 1](sprints/sprint1.md) · [Sprint 2](sprints/sprint2.md) · [Sprint 3](sprints/sprint3.md) · [Sprint 4](sprints/sprint4.md)
 
 ---
 
@@ -12,7 +14,7 @@ Minimal high-level and low-level design for the MVP → production evolution.
 ```
 ┌─────────────┐         HTTPS/JSON          ┌──────────────────┐
 │   Browser   │ ◄──────────────────────────►│  Banking.Api     │
-│  (React)    │                             │  (ASP.NET Core)  │
+│  (Next.js)  │         CORS :3000          │  (ASP.NET Core)  │
 └─────────────┘                             └────────┬─────────┘
                                                      │
                     ┌────────────────────────────────┼────────────────────────┐
@@ -30,7 +32,7 @@ Minimal high-level and low-level design for the MVP → production evolution.
 ┌─────────────────────────────────────────────────────────────┐
 │  Presentation                                               │
 │  • Banking.Api (controllers, middleware, auth)              │
-│  • banking-web (React UI)                                   │
+│  • banking-web (Next.js App Router UI)                      │
 ├─────────────────────────────────────────────────────────────┤
 │  Application (use cases)                                    │
 │  • Commands / Queries / Handlers                            │
@@ -50,32 +52,64 @@ Minimal high-level and low-level design for the MVP → production evolution.
 Dependency rule: outer layers depend on inner; Domain has zero dependencies.
 ```
 
-### 1.3 MVP Scope (Sprint 1–3 rollup)
+### 1.3 Capability Roadmap (Sprint 1–4)
 
-| Capability | Sprint 1 | Sprint 2 | Sprint 3 |
-|---|---|---|---|
-| Register / Login | ✓ | harden | RBAC |
-| View accounts & balance | ✓ | — | — |
-| Deposit / Withdraw | ✓ | audit | idempotency |
-| Internal transfer | ✓ | notifications | concurrency |
-| Transaction history | ✓ | pagination | export |
-| Admin / staff views | — | mock | ✓ |
-| External payment | — | mock gateway | stub API |
+| Capability | Sprint 1 | Sprint 2 | Sprint 3 | Sprint 4 |
+|---|---|---|---|---|
+| Register / Login | ✅ | harden | settings API | refresh tokens |
+| View accounts & balance | ✅ | — | — | — |
+| Deposit | ✅ | — | — | idempotency |
+| Withdraw | — | ✅ | — | audit |
+| Internal transfer | UI mock | ✅ | — | idempotency |
+| Per-account transaction history | ✅ | — | categories (optional) | export API |
+| Unified transaction search | UI client-side | ✅ `GET /api/transactions` | — | — |
+| Spending insights | UI mock | — | ✅ | — |
+| Credit cards | UI mock | — | ✅ | — |
+| Investments | UI mock | — | ✅ | — |
+| Bill / scheduled payments | UI mock | — | ✅ | mock gateway |
+| User settings | UI mock | — | ✅ | — |
+| Admin / staff views | — | — | — | ✅ |
+| Exception middleware | — | ✅ | — | ProblemDetails |
+| Integration tests | — | ✅ | expand | CI |
 
-### 1.4 Key Flows
+### 1.4 Frontend ↔ Backend Integration Map
+
+| UI route | Module | API source | Backend endpoint | Status |
+|---|---|---|---|---|
+| `/login`, `/register` | Auth | Real | `POST /api/auth/*` | ✅ Implemented |
+| `/dashboard` | Overview | Mixed | `GET /api/accounts`, per-account transactions | ✅ Accounts; insights mock |
+| `/accounts` | Accounts | Real | `GET/POST /api/accounts` | ✅ Implemented |
+| `/accounts/{id}` | Account detail | Real | `GET /api/accounts/{id}`, deposits, transactions | ✅ Implemented |
+| `/transactions` | Transactions | Client aggregate | `GET /api/accounts/{id}/transactions` (N calls) | 🟡 Sprint 2 unified API |
+| `/payments` | Transfer | Mock | `POST /api/transfers` | ⏳ Sprint 2 |
+| `/payments` | Bills / scheduled | Mock | `GET/POST /api/payments/*` | ⏳ Sprint 3 |
+| `/credit-cards` | Credit cards | Mock | `GET /api/credit-cards` | ⏳ Sprint 3 |
+| `/investments` | Portfolio | Mock | `GET /api/investments/portfolio` | ⏳ Sprint 3 |
+| `/settings` | Preferences | Mock | `GET/PATCH /api/settings` | ⏳ Sprint 3 |
+
+**Swap layer:** `src/banking-web/src/shared/api/index.ts` exports `bankingApi` — each domain service in `shared/api/services/` can switch from mock to real without page changes.
+
+### 1.5 Key Flows
 
 **Login**
-1. React POST `/api/auth/login` with credentials  
-2. Api → LoginQuery handler → CustomerRepository (ADO.NET)  
+1. Next.js POST `/api/auth/login` with credentials  
+2. Api → Login handler → CustomerRepository (ADO.NET)  
 3. Verify password hash → issue JWT  
-4. React stores token; attaches `Authorization` header  
+4. Web stores token; `bankingApi` attaches `Authorization` header  
 
-**Transfer (critical path)**
-1. React POST `/api/transfers` with `{ fromAccountId, toAccountId, amount }`  
+**Deposit (implemented)**
+1. POST `/api/accounts/{id}/deposits` with `{ amount, description? }`  
+2. DepositCommandHandler opens SQL transaction  
+3. Credit account; insert Transaction row  
+4. Commit; return updated balance  
+
+**Transfer (Sprint 2)**
+1. POST `/api/transfers` with `{ fromAccountId, toAccountId, amount }`  
 2. TransferCommandHandler opens SQL transaction  
 3. Lock/read both accounts; validate ownership and balance  
 4. Debit source, credit destination; insert two Transaction rows + Transfer record  
 5. Commit; return transfer receipt DTO  
+6. Payments UI calls real API (replaces mock `submitTransfer`)
 
 ---
 
@@ -86,45 +120,58 @@ Dependency rule: outer layers depend on inner; Domain has zero dependencies.
 | Project | Responsibility |
 |---|---|
 | `Banking.Domain` | Entities, enums (`AccountType`), `InsufficientFundsException` |
-| `Banking.Application` | CQRS handlers, `ICustomerRepository`, `IAccountRepository`, `ITransactionRepository`, DTOs |
-| `Banking.Infrastructure` | ADO.NET repos, `SqlConnectionFactory`, JWT, mocks |
-| `Banking.Api` | REST endpoints, DI composition root, exception middleware |
+| `Banking.Application` | CQRS handlers, repository interfaces, DTOs |
+| `Banking.Infrastructure` | ADO.NET repos, `SqlConnectionFactory`, JWT, BCrypt, mocks |
+| `Banking.Api` | REST endpoints, DI composition root, CORS, exception middleware (Sprint 2) |
 
-### 2.2 CQRS Mapping (Sprint 1 — manual dispatch)
+### 2.2 CQRS Mapping
 
-Sprint 1 may use explicit handler injection in controllers. MediatR optional in Sprint 2.
+Sprint 1 uses explicit handler injection in controllers. MediatR optional in Sprint 2.
 
 **Commands (writes)**
-| Command | Handler responsibility |
-|---|---|
-| `RegisterCustomerCommand` | Hash password, insert Customer |
-| `CreateAccountCommand` | Create account with zero balance for customer |
-| `DepositCommand` | Credit account, append Transaction |
-| `WithdrawCommand` | Validate balance, debit, append Transaction |
-| `TransferCommand` | Atomic dual-leg update + Transfer record |
+| Command | Handler responsibility | Status |
+|---|---|---|
+| `RegisterCustomerCommand` | Hash password, insert Customer | ✅ |
+| `CreateAccountCommand` | Create account with zero balance | ✅ |
+| `DepositCommand` | Credit account, append Transaction | ✅ |
+| `WithdrawCommand` | Validate balance, debit, append Transaction | Sprint 2 |
+| `TransferCommand` | Atomic dual-leg update + Transfer record | Sprint 2 |
+| `PayBillCommand` | Debit account, mock external pay | Sprint 3 |
 
 **Queries (reads)**
-| Query | Returns |
-|---|---|
-| `LoginQuery` | Auth token + customer summary |
-| `GetCustomerAccountsQuery` | List of account DTOs |
-| `GetAccountByIdQuery` | Account detail (owner-scoped) |
-| `GetAccountTransactionsQuery` | Paginated transaction list |
+| Query | Returns | Status |
+|---|---|---|
+| `LoginQuery` | Auth token + customer summary | ✅ |
+| `GetCustomerAccountsQuery` | List of account DTOs | ✅ |
+| `GetAccountByIdQuery` | Account detail (owner-scoped) | ✅ |
+| `GetAccountTransactionsQuery` | Paginated transaction list | ✅ |
+| `GetCustomerTransactionsQuery` | Cross-account history + filters | Sprint 2 |
+| `GetSpendingInsightsQuery` | Category aggregates | Sprint 3 |
+| `GetCreditCardsQuery` | Card list for customer | Sprint 3 |
+| `GetInvestmentPortfolioQuery` | Holdings summary | Sprint 3 |
 
-### 2.3 API Endpoints (MVP)
+### 2.3 API Endpoints
 
-| Method | Route | Auth | Description |
-|---|---|---|---|
-| POST | `/api/auth/register` | No | Register customer |
-| POST | `/api/auth/login` | No | Login, return JWT |
-| GET | `/api/accounts` | Yes | List current user's accounts |
-| POST | `/api/accounts` | Yes | Open new account |
-| GET | `/api/accounts/{id}` | Yes | Account detail |
-| GET | `/api/accounts/{id}/transactions` | Yes | History |
-| POST | `/api/accounts/{id}/deposits` | Yes | Deposit |
-| POST | `/api/accounts/{id}/withdrawals` | Yes | Withdraw |
-| POST | `/api/transfers` | Yes | Transfer between accounts |
-| GET | `/api/health` | No | Health check (Sprint 3) |
+| Method | Route | Auth | Description | Status |
+|---|---|---|---|---|
+| POST | `/api/auth/register` | No | Register customer | ✅ |
+| POST | `/api/auth/login` | No | Login, return JWT | ✅ |
+| GET | `/api/accounts` | Yes | List current user's accounts | ✅ |
+| POST | `/api/accounts` | Yes | Open new account | ✅ |
+| GET | `/api/accounts/{id}` | Yes | Account detail | ✅ |
+| GET | `/api/accounts/{id}/transactions` | Yes | Per-account history | ✅ |
+| POST | `/api/accounts/{id}/deposits` | Yes | Deposit | ✅ |
+| POST | `/api/accounts/{id}/withdrawals` | Yes | Withdraw | Sprint 2 |
+| POST | `/api/transfers` | Yes | Transfer between accounts | Sprint 2 |
+| GET | `/api/transactions` | Yes | Unified history (`?search&accountId&skip&take`) | Sprint 2 |
+| GET | `/api/insights/spending` | Yes | Dashboard spending breakdown | Sprint 3 |
+| GET | `/api/credit-cards` | Yes | Credit card list | Sprint 3 |
+| GET | `/api/investments/portfolio` | Yes | Investment holdings | Sprint 3 |
+| GET | `/api/payments/bills` | Yes | Due bills | Sprint 3 |
+| POST | `/api/payments/bills/{id}/pay` | Yes | Pay bill | Sprint 3 |
+| GET/POST | `/api/payments/scheduled` | Yes | Scheduled payments | Sprint 3 |
+| GET/PATCH | `/api/settings` | Yes | User preferences | Sprint 3 |
+| GET | `/api/health` | No | Health check | ✅ |
 
 ### 2.4 Application — Interface Sketch
 
@@ -149,6 +196,8 @@ public interface ITransactionRepository
 {
     Task InsertAsync(Transaction transaction, CancellationToken ct);
     Task<IReadOnlyList<Transaction>> GetByAccountIdAsync(Guid accountId, int skip, int take, CancellationToken ct);
+    // Sprint 2:
+  // Task<IReadOnlyList<Transaction>> GetByCustomerIdAsync(Guid customerId, TransactionFilter filter, CancellationToken ct);
 }
 ```
 
@@ -166,29 +215,49 @@ public interface ITransactionRepository
 
 ### 2.6 Cross-Cutting Concerns
 
-| Concern | Sprint 1 | Later |
+| Concern | Sprint 1 | Sprint 2+ |
 |---|---|---|
-| Authentication | JWT bearer | Refresh tokens |
+| Authentication | JWT bearer | Refresh tokens (Sprint 4) |
+| CORS | `localhost:3000` | Env-based origins |
 | Validation | Data annotations / manual | FluentValidation |
-| Errors | Middleware → `{ error, code }` JSON | ProblemDetails RFC 7807 |
-| Logging | `ILogger` | Serilog + sinks |
-| Concurrency | Last-write-wins (document risk) | `rowversion` column |
+| Errors | Controller-level | Global middleware → `{ error, code }` |
+| Logging | `ILogger` | Serilog + sinks (Sprint 4) |
+| Concurrency | Last-write-wins (document risk) | `ROWVERSION` enforcement (Sprint 4) |
 
-### 2.7 Frontend Structure
+### 2.7 Frontend Structure (actual)
 
 ```
 banking-web/src/
-├── app/                 # Router, providers (auth)
+├── app/
+│   ├── (auth)/              # login, register
+│   ├── (workspace)/         # dashboard, accounts, transactions, payments, …
+│   ├── globals.css          # dark design tokens
+│   └── layout.tsx
 ├── features/
-│   ├── auth/            # Login, Register pages
-│   ├── accounts/        # List, detail, create
-│   └── transfers/       # Transfer form, history
-├── shared/
-│   ├── api/             # axios/fetch client, auth interceptor
-│   ├── components/      # Button, Input, Layout
-│   └── types/           # TS interfaces mirroring API DTOs
-└── main.tsx
+│   ├── auth/
+│   ├── accounts/
+│   ├── dashboard/
+│   ├── transactions/
+│   ├── payments/
+│   ├── credit-cards/
+│   ├── investments/
+│   └── settings/
+└── shared/
+    ├── api/
+    │   ├── index.ts         # bankingApi facade (mock/real per domain)
+    │   ├── client.ts        # fetch + JWT
+    │   ├── accounts.ts      # real
+    │   ├── auth.ts          # real
+    │   ├── types/           # DTO mirrors + extended.ts for mock-only shapes
+    │   ├── services/        # insights, credit-cards, investments, payments, settings, transactions
+    │   └── mocks/           # data.ts — remove in Sprint 3
+    ├── components/
+    │   ├── ui/              # Button, Card, Input, Badge, …
+    │   └── layout/          # Sidebar, WorkspaceShell
+    └── hooks/               # useAsync, auth context
 ```
+
+**Design:** Notion-inspired dark-only UI; typography-led hierarchy; workspace sidebar with grouped nav (Overview, Banking, Products, Account).
 
 ---
 
@@ -197,7 +266,7 @@ banking-web/src/
 **RDBMS:** SQL Server (LocalDB or Docker for dev)  
 **Naming:** PascalCase tables, singular entity names, `Id` as `UNIQUEIDENTIFIER` PK  
 
-### 3.1 ER Diagram (Logical)
+### 3.1 ER Diagram (Logical — Sprint 1 core)
 
 ```
 ┌──────────────┐       ┌──────────────┐       ┌────────────────┐
@@ -210,8 +279,8 @@ banking-web/src/
 │ CreatedAt    │       │ Balance      │       │ BalanceAfter   │
 └──────────────┘       │ Currency     │       │ Description    │
                        │ Status       │       │ CreatedAt      │
-                       │ CreatedAt    │       └────────────────┘
-                       │ RowVersion   │
+                       │ CreatedAt    │       │ Category (S3)  │
+                       │ RowVersion   │       └────────────────┘
                        └──────┬───────┘
                               │
                        ┌──────▼───────┐
@@ -235,7 +304,7 @@ banking-web/src/
 └──────────────┘
 ```
 
-### 3.2 Table Definitions
+### 3.2 Table Definitions (Sprint 1 — implemented)
 
 #### Customer
 | Column | Type | Constraints |
@@ -264,7 +333,7 @@ banking-web/src/
 | Currency | CHAR(3) | NOT NULL, DEFAULT 'USD' |
 | Status | TINYINT | NOT NULL, DEFAULT 1 (1=Active, 2=Closed) |
 | CreatedAt | DATETIME2 | NOT NULL |
-| RowVersion | ROWVERSION | Optimistic concurrency (use in Sprint 3) |
+| RowVersion | ROWVERSION | Optimistic concurrency (enforce Sprint 4) |
 
 #### Transaction
 | Column | Type | Constraints |
@@ -277,6 +346,7 @@ banking-web/src/
 | Description | NVARCHAR(500) | NULL |
 | ReferenceId | UNIQUEIDENTIFIER | NULL (Transfer Id if applicable) |
 | CreatedAt | DATETIME2 | NOT NULL |
+| Category | TINYINT | NULL — Sprint 3 optional |
 
 **Index:** `IX_Transaction_AccountId_CreatedAt` ON (AccountId, CreatedAt DESC)
 
@@ -291,14 +361,28 @@ banking-web/src/
 | Reference | NVARCHAR(50) | NOT NULL, UNIQUE (human-readable ref) |
 | CreatedAt | DATETIME2 | NOT NULL |
 
-**Constraint:** `FromAccountId <> ToAccountId`
+**Constraint:** `FromAccountId <> ToAccountId`  
+**Status:** Table exists in schema; API not wired until Sprint 2.
 
-### 3.3 Seed Data (Dev Only)
+### 3.3 Planned Tables (Sprint 3)
 
-- One customer: `demo@bank.local` / password documented in README (not committed)
+| Table | Purpose |
+|---|---|
+| `CreditCard` | Synthetic card products per customer |
+| `InvestmentHolding` | Symbol, shares, cost basis |
+| `BillPayment` | Due bills linked to payee |
+| `ScheduledPayment` | Recurring / future-dated payments |
+| `CustomerSettings` | Notification toggles, display prefs |
+
+Full DDL to be added in `scripts/migrations/` when Sprint 3 starts.
+
+### 3.4 Seed Data (Dev Only)
+
+- One customer: `demo@bank.local` / `Demo123!` (see README)
 - Two accounts: Checking ($1,000), Savings ($500)
+- Sprint 3: seed credit card, holdings, sample bills for demo user
 
-### 3.4 SQL Init Script Location
+### 3.5 SQL Init Script Location
 
 `scripts/init-db.sql` — creates database, tables, indexes, seed data.
 
@@ -306,12 +390,13 @@ banking-web/src/
 
 ## 4. Non-Functional Requirements (Progressive)
 
-| NFR | MVP | Target |
-|---|---|---|
-| API response (read) | < 500ms local | < 200ms |
-| Transfer integrity | SQL transaction | + idempotency key |
-| Availability | Single instance | Health checks |
-| Audit | Transaction log | + Audit table Sprint 3 |
+| NFR | Sprint 1 | Sprint 2 | Sprint 4 target |
+|---|---|---|---|
+| API response (read) | < 500ms local | unified transactions | < 200ms |
+| Transfer integrity | — | SQL transaction | + idempotency key |
+| Availability | Single instance | health check ✅ | Docker Compose |
+| Audit | Transaction log | — | Audit table |
+| Frontend mock debt | 5 modules on mocks | transfer wired | zero mocks |
 
 ---
 
@@ -322,7 +407,8 @@ banking-web/src/
 | ADO.NET | Learning goal; explicit SQL control |
 | SQL Server | Familiar tooling; ROWVERSION support |
 | JWT | Stateless API auth for SPA |
-| React + Vite | Fast dev feedback, TS safety |
+| Next.js + Tailwind | App Router, SSR-ready, fast iteration; replaced original Vite plan |
+| Mock API facade | UI can ship ahead of backend; swap per domain |
 | No EF Core | Avoid hiding SQL; intentional trade-off |
 
 ---
@@ -330,8 +416,10 @@ banking-web/src/
 ## 6. Open Decisions (Resolve During Sprints)
 
 - [ ] MediatR vs manual handler registry (Sprint 2)
-- [ ] Minimal APIs vs controllers (pick one in Sprint 1, stick to it)
-- [ ] axios vs fetch for React HTTP client
+- [x] Minimal APIs vs controllers → **Controllers** (Sprint 1)
+- [x] HTTP client → **fetch** in `shared/api/client.ts`
 - [ ] Account number generation strategy (sequential vs UUID-based display)
+- [ ] Transaction categories: DB column vs server-side inference from description
+- [ ] Credit/investment data: synthetic seed vs mock external provider interface
 
-Document decisions in sprint retrospectives.
+Document decisions in sprint retrospectives (`docs/tech-debt.md`).

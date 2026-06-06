@@ -1,6 +1,6 @@
 # Banking Application
 
-Learning project: C# Web API + React + SQL Server with ADO.NET and Clean Architecture.
+Learning project: C# Web API + Next.js + SQL Server with ADO.NET and Clean Architecture.
 
 See `prompt.md` for AI steering rules and `docs/Architecture.md` for design details.
 
@@ -18,7 +18,8 @@ banking/
 │   ├── Banking.Domain/           # Entities, domain rules (no external packages)
 │   ├── Banking.Application/      # Use cases, interfaces, DTOs
 │   ├── Banking.Infrastructure/   # ADO.NET, JWT, mocks
-│   └── Banking.Api/              # REST API
+│   ├── Banking.Api/              # REST API
+│   └── banking-web/              # Next.js + Tailwind frontend
 ├── docs/
 ├── scripts/
 │   └── init-db.sql
@@ -76,10 +77,38 @@ curl -X POST http://localhost:5099/api/auth/login \
 
 Password hashing uses **BCrypt** (`BCrypt.Net-Next`). JWT `sub` claim carries the customer ID (used for account scoping in Day 3).
 
+## Frontend
+
+Next.js + Tailwind workspace at `src/banking-web`. Design language: Notion-inspired — calm neutrals, typography-led hierarchy, generous whitespace.
+
+**Modules:** Overview, Accounts, Transactions, Payments, Credit cards, Investments, Settings.
+
+**Mock APIs** (easily swappable): credit cards, investments, payments, insights, settings. Real API: auth, accounts, deposits, transactions. See `src/banking-web/src/shared/api/index.ts`.
+
+```bash
+# Terminal 1 — API (must be running first)
+cd src/Banking.Api && dotnet run
+
+# Terminal 2 — Web
+cd src/banking-web
+cp .env.example .env.local   # if .env.local doesn't exist
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+### Demo flow
+
+1. Register or log in (`demo@bank.local` / `Demo123!`)
+2. Dashboard lists accounts with balances
+3. Create a Checking or Savings account
+4. Open an account → deposit funds → see updated balance and transaction history
+5. Log out
+
 ## Sprint Progress
 
 - [x] Day 1 — Solution skeleton, DB schema, health endpoint
 - [x] Day 2 — Domain entities & auth (register/login)
-- [ ] Day 3 — Accounts
-- [ ] Day 4 — Deposits & transactions
-- [ ] Day 5 — React frontend
+- [x] Day 3 — Accounts
+- [x] Day 4 — Deposits & transactions
+- [x] Day 5 — Next.js frontend

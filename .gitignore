@@ -16,6 +16,7 @@ Thumbs.db
 # Node (frontend — Day 5)
 node_modules/
 dist/
+.next/
 
 # Secrets
 **/appsettings.*.local.json
